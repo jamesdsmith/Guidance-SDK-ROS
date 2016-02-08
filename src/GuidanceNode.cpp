@@ -18,6 +18,8 @@
 #include "DJI_guidance.h"
 #include "DJI_utility.h"
 #include "guidance_helpers.h"
+#include "guidance/set_camera_id.h"
+#include "guidance/set_exposure_param.h"
 
 #include <geometry_msgs/TransformStamped.h> //IMU
 #include <geometry_msgs/Vector3Stamped.h> //velocity
@@ -226,8 +228,8 @@ int my_callback(int data_type, int data_len, char *content)
     return 0;
 }
 
-void set_camera_id_callback(int cameraID) {
-	e_vbus_index idx = static_cast<e_vbus_index>(cameraID);
+void set_camera_id_callback(const guidance::set_camera_idConstPtr& msg) {
+	e_vbus_index idx = static_cast<e_vbus_index>(msg->cameraID);
 	if(idx >= e_vbus5 && idx <= e_vbus1) {
 		int err_code = stop_transfer();
 		//RETURN_IF_ERR(err_code);
@@ -244,13 +246,13 @@ void set_camera_id_callback(int cameraID) {
 	}
 }
 
-void set_exposure_param_callback(float step, float exposure_time, uint32_t expected_brightness, uint32_t is_auto_exposure, int camera_pair_index) {
-	if(camera_pair_index != CAMERA_ID) {
-		std::cout << "Setting camera exposure parameters for an unselected camera! Setting: " << camera_pair_index << ", Selected: " << CAMERA_ID << std::endl;
+void set_exposure_param_callback(const guidance::set_exposure_paramConstPtr& msg) {
+	if(msg->camera_pair_index != CAMERA_ID) {
+		std::cout << "Setting camera exposure parameters for an unselected camera! Setting: " << msg->camera_pair_index << ", Selected: " << CAMERA_ID << std::endl;
 	}
-	exposure_para = get_exposure_param(step, exposure_time, expected_brightness, is_auto_exposure, camera_pair_index);
+	exposure_para = get_exposure_param(msg->step, msg->exposure_time, msg->expected_brightness, msg->is_auto_exposure, (int)msg->camera_pair_index);
 	std::cout << "Setting exposure parameters....SensorId=" << CAMERA_ID << std::endl;
-    set_exposure_param(&exposure_para);
+	set_exposure_param(&exposure_para);
 }
 
 int main(int argc, char** argv)
@@ -268,8 +270,8 @@ int main(int argc, char** argv)
     obstacle_distance_pub	= my_node.advertise<sensor_msgs::LaserScan>("/guidance/obstacle_distance",1);
     ultrasonic_pub			= my_node.advertise<sensor_msgs::LaserScan>("/guidance/ultrasonic",1);
 
-    //set_camera_id_sub		= my_node.subscribe("/guidance/set_camera_id", 10, set_camera_id_callback);
-    //set_exposure_param_sub	= my_node.subscribe("/guidance/set_expsoure_param", 10, set_exposure_param_callback);
+    set_camera_id_sub		= my_node.subscribe("/guidance/set_camera_id", 10, set_camera_id_callback);
+    set_exposure_param_sub	= my_node.subscribe("/guidance/set_expsoure_param", 10, set_exposure_param_callback);
 
     /* initialize guidance */
     reset_config();

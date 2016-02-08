@@ -19,6 +19,8 @@
 #include "DJI_guidance.h"
 #include "DJI_utility.h"
 #include "guidance_helpers.h"
+#include "guidance/set_camera_id.h"
+#include "guidance/set_exposure_param.h"
 
 #include <geometry_msgs/TransformStamped.h> //IMU
 #include <geometry_msgs/Vector3Stamped.h> //velocity
@@ -35,6 +37,7 @@ DJI_event       g_event;
 ros::Subscriber left_image_sub;
 ros::Subscriber right_image_sub;
 ros::Subscriber depth_image_sub;
+ros::Subscriber disparity_image_sub;
 ros::Subscriber imu_sub;
 ros::Subscriber velocity_sub;
 ros::Subscriber obstacle_distance_sub;
@@ -94,6 +97,24 @@ void depth_image_callback(const sensor_msgs::ImageConstPtr& depth_img)
     cv::waitKey(1);
 }
 
+/* depth greyscale image */
+void disparity_image_callback(const sensor_msgs::ImageConstPtr& disparity_img)
+{
+    cv_bridge::CvImagePtr cv_ptr;
+    try {
+        cv_ptr = cv_bridge::toCvCopy(disparity_img, sensor_msgs::image_encodings::MONO16);
+    }
+    catch (cv_bridge::Exception& e) {
+        ROS_ERROR("cv_bridge exception: %s", e.what());
+        return;
+    }
+
+    cv::Mat disparity8(HEIGHT, WIDTH, CV_8UC1);
+    cv_ptr->image.convertTo(disparity8, CV_8UC1);
+    cv::imshow("disparity_image", disparity8);
+    cv::waitKey(1);
+}
+
 /* imu */
 void imu_callback(const geometry_msgs::TransformStamped& g_imu)
 { 
@@ -132,7 +153,7 @@ int main(int argc, char** argv)
             " 'j','k' to change the exposure parameters.\n\t"
             " 'm' to switch between AEC and constant exposure modes.\n\t"
             " 'n' to return to default exposure mode and parameters.\n\t"
-            " 'q' to quit.");
+            " 'q' to quit.\n");
         return 0;
     }
 
@@ -142,6 +163,7 @@ int main(int argc, char** argv)
     left_image_sub        = my_node.subscribe("/guidance/left_image",  10, left_image_callback);
     right_image_sub       = my_node.subscribe("/guidance/right_image", 10, right_image_callback);
     depth_image_sub       = my_node.subscribe("/guidance/depth_image", 10, depth_image_callback);
+    disparity_image_sub   = my_node.subscribe("/guidance/depth_image", 10, disparity_image_callback);
     imu_sub               = my_node.subscribe("/guidance/imu", 1, imu_callback);
     velocity_sub          = my_node.subscribe("/guidance/velocity", 1, velocity_callback);
     obstacle_distance_sub = my_node.subscribe("/guidance/obstacle_distance", 1, obstacle_distance_callback);
@@ -149,10 +171,20 @@ int main(int argc, char** argv)
 
     int err_code = 0;
 
+    std::cout << "Starting GuidanceNodeTest..." << std::endl;
+    // Open windows at startup so we can process wait_event
+    cv::Mat disparity8(HEIGHT, WIDTH, CV_8UC1);
+    cv::imshow("disparity_image", disparity8);
+    cv::namedWindow("depth");
+
     while (ros::ok()) {
-        g_event.wait_event();
+        //g_event.wait_event();
+        key = waitKey(1);
         if (key > 0) {
-            if(key == 'j' || key == 'k' || key == 'm' || key == 'n') {
+            if(key == 'q') {
+                // quit the loop
+                break;
+            } else if(key == 'j' || key == 'k' || key == 'm' || key == 'n') {
                 // set exposure parameters
                 if(key=='j')
                     if(exposure_para.m_is_auto_exposure) exposure_para.m_expected_brightness += 20;
@@ -168,17 +200,12 @@ int main(int argc, char** argv)
                     exposure_para.m_expected_brightness = exposure_para.m_exposure_time = 0;
                 }
 
-                std::cout<<"Setting exposure parameters....SensorId="<<CAMERA_ID<<std::endl;
+                std::cout << "Setting exposure parameters....SensorId=" << CAMERA_ID << std::endl;
                 exposure_para.m_camera_pair_index = CAMERA_ID;
-                set_exposure_param(&exposure_para);
+                //set_exposure_param(&exposure_para);
                 key = 0;
-            } else {
+            } else if(key == 'w' || key == 'd' || key == 'x' || key == 'a' || key == 's') {
                 // switch image direction
-                err_code = stop_transfer();
-                RETURN_IF_ERR(err_code);
-                reset_config();
-
-                if (key == 'q') break;
                 if (key == 'w') CAMERA_ID = e_vbus1;
                 if (key == 'd') CAMERA_ID = e_vbus2;
                 if (key == 'x') CAMERA_ID = e_vbus3;
