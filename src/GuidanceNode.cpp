@@ -31,6 +31,8 @@ ros::Publisher obstacle_distance_pub;
 ros::Publisher velocity_pub;
 ros::Publisher ultrasonic_pub;
 
+ros::Subscriber set_camera_id_sub;
+
 using namespace cv;
 
 #define WIDTH 320
@@ -223,21 +225,31 @@ int my_callback(int data_type, int data_len, char *content)
 #define RETURN_IF_ERR(err_code) { if( err_code ){ release_transfer(); \
 std::cout<<"Error: "<<(e_sdk_err_code)err_code<<" at "<<__LINE__<<","<<__FILE__<<std::endl; return -1;}}
 
+void set_camera_id(uint32 cameraID) {
+	e_vbus_index idx = static_cast<e_vbus_index>(cameraID);
+	if(idx >= e_vbus5 && idx <= e_vbus1) {
+		int err_code = stop_transfer();
+		RETURN_IF_ERR(err_code);
+		reset_config();
+		
+		CAMERA_ID = idx;
+
+		select_greyscale_image(CAMERA_ID, true);
+		select_greyscale_image(CAMERA_ID, false);
+		select_depth_image(CAMERA_ID);
+		select_disparity_image(CAMERA_ID);
+
+		err_code = start_transfer();
+		RETURN_IF_ERR(err_code);
+	}
+}
+
 int main(int argc, char** argv)
 {
-	if(argc>1){
-		printf("This is demo program showing data from Guidance.\n\t" 
-			" 'a','d','w','s','x' to select sensor direction.\n\t"
-			" 'j','k' to change the exposure parameters.\n\t"
-			" 'm' to switch between AEC and constant exposure modes.\n\t"
-			" 'n' to return to default exposure mode and parameters.\n\t"
-			" 'q' to quit.");
-		return 0;
-	}
-	
     /* initialize ros */
     ros::init(argc, argv, "GuidanceNode");
     ros::NodeHandle my_node;
+    
     depth_image_pub			= my_node.advertise<sensor_msgs::Image>("/guidance/depth_image",1);
     disparity_image_pub		= my_node.advertise<sensor_msgs::Image>("/guidance/disparity_image",1);
     left_image_pub			= my_node.advertise<sensor_msgs::Image>("/guidance/left_image",1);
@@ -246,6 +258,8 @@ int main(int argc, char** argv)
     velocity_pub  			= my_node.advertise<geometry_msgs::Vector3Stamped>("/guidance/velocity",1);
     obstacle_distance_pub	= my_node.advertise<sensor_msgs::LaserScan>("/guidance/obstacle_distance",1);
     ultrasonic_pub			= my_node.advertise<sensor_msgs::LaserScan>("/guidance/ultrasonic",1);
+
+    set_camera_id_sub		= my_node.subscribe("/guidance/set_camera_id", 10, )
 
     /* initialize guidance */
     reset_config();
@@ -264,7 +278,7 @@ int main(int argc, char** argv)
 	stereo_cali cali[CAMERA_PAIR_NUM];
 	err_code = get_stereo_cali(cali);
 	RETURN_IF_ERR(err_code);
-    std::cout<<"cu\tcv\tfocal\tbaseline\n";
+    std::cout << "cu\tcv\tfocal\tbaseline\n";
 	for (int i=0; i<CAMERA_PAIR_NUM; i++)
 	{
         std::cout<<cali[i].cu<<"\t"<<cali[i].cv<<"\t"<<cali[i].focal<<"\t"<<cali[i].baseline<<std::endl;
@@ -321,26 +335,6 @@ int main(int argc, char** argv)
                 std::cout<<"Setting exposure parameters....SensorId="<<CAMERA_ID<<std::endl;
                 para.m_camera_pair_index = CAMERA_ID;
 				set_exposure_param(&para);
-				key = 0;
-			}
-			else {// switch image direction
-				err_code = stop_transfer();
-				RETURN_IF_ERR(err_code);
-				reset_config();
-
-				if (key == 'q') break;
-				if (key == 'w') CAMERA_ID = e_vbus1;
-				if (key == 'd') CAMERA_ID = e_vbus2;
-				if (key == 'x') CAMERA_ID = e_vbus3;
-				if (key == 'a') CAMERA_ID = e_vbus4;	   
-				if (key == 's') CAMERA_ID = e_vbus5;
-
-				select_greyscale_image(CAMERA_ID, true);
-				select_greyscale_image(CAMERA_ID, false);
-				select_depth_image(CAMERA_ID);
-
-				err_code = start_transfer();
-				RETURN_IF_ERR(err_code);
 				key = 0;
 			}
 			ros::spinOnce();
