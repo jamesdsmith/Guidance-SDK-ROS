@@ -23,6 +23,7 @@
 #include <sensor_msgs/LaserScan.h> //obstacle distance & ultrasonic
 
 ros::Publisher depth_image_pub;
+ros::Publisher disparity_image_pub;
 ros::Publisher left_image_pub;
 ros::Publisher right_image_pub;
 ros::Publisher imu_pub;
@@ -44,6 +45,8 @@ Mat             g_greyscale_image_left(HEIGHT, WIDTH, CV_8UC1);
 Mat				g_greyscale_image_right(HEIGHT, WIDTH, CV_8UC1);
 Mat				g_depth(HEIGHT,WIDTH,CV_16SC1);
 Mat				depth8(HEIGHT, WIDTH, CV_8UC1);
+Mat				g_disparity(HEIGHT,WIDTH,CV_16SC1);
+Mat				disparity8(HEIGHT, WIDTH, CV_8UC1);
 
 std::ostream& operator<<(std::ostream& out, const e_sdk_err_code value){
 	const char* s = 0;
@@ -112,6 +115,18 @@ int my_callback(int data_type, int data_len, char *content)
 			depth_16.header.stamp	  = ros::Time::now();
 			depth_16.encoding	  = sensor_msgs::image_encodings::MONO16;
 			depth_image_pub.publish(depth_16.toImageMsg());
+		}
+		if ( data->m_disparity_image[CAMERA_ID] ){
+			memcpy(g_disparity.data, data->m_disparity_image[CAMERA_ID], IMAGE_SIZE * 2);
+			g_disparity.convertTo(disparity8, CV_8UC1);
+			imshow("disparity", disparity8);
+			//publish disparity image
+			cv_bridge::CvImage disparity_16;
+			g_disparity.copyTo(disparity_16.image);
+			disparity_16.header.frame_id  = "guidance";
+			disparity_16.header.stamp	  = ros::Time::now();
+			disparity_16.encoding		  = sensor_msgs::image_encodings::MONO16;
+			disparity_image_pub.publish(disparity_16.toImageMsg());
 		}
 		
         key = waitKey(1);
@@ -224,6 +239,7 @@ int main(int argc, char** argv)
     ros::init(argc, argv, "GuidanceNode");
     ros::NodeHandle my_node;
     depth_image_pub			= my_node.advertise<sensor_msgs::Image>("/guidance/depth_image",1);
+    disparity_image_pub		= my_node.advertise<sensor_msgs::Image>("/guidance/disparity_image",1);
     left_image_pub			= my_node.advertise<sensor_msgs::Image>("/guidance/left_image",1);
     right_image_pub			= my_node.advertise<sensor_msgs::Image>("/guidance/right_image",1);
     imu_pub  				= my_node.advertise<geometry_msgs::TransformStamped>("/guidance/imu",1);
