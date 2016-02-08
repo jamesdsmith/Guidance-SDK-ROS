@@ -7,10 +7,12 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   sensor_msgs
   geometry_msgs
+  message_generation
 )
 find_package(OpenCV REQUIRED)
 
 catkin_package(
+  CATKIN_DEPENDS message_runtime
 )
 
 include_directories(
@@ -35,6 +37,11 @@ if (${CMAKE_SYSTEM_PROCESSOR} MATCHES "armv7l" )
 	link_directories(${PROJECT_SOURCE_DIR}/lib/XU3)
 else ()
 endif ()
+
+add_message_files(
+  FILES
+  set_camera_id.msg
+)
 
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
