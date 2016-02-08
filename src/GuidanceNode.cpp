@@ -17,6 +17,7 @@
 
 #include "DJI_guidance.h"
 #include "DJI_utility.h"
+#include "guidance_helpers.h"
 
 #include <geometry_msgs/TransformStamped.h> //IMU
 #include <geometry_msgs/Vector3Stamped.h> //velocity
@@ -32,6 +33,7 @@ ros::Publisher velocity_pub;
 ros::Publisher ultrasonic_pub;
 
 ros::Subscriber set_camera_id_sub;
+ros::Subscriber set_exposure_param_sub;
 
 using namespace cv;
 
@@ -39,8 +41,10 @@ using namespace cv;
 #define HEIGHT 240
 #define IMAGE_SIZE (HEIGHT * WIDTH)
 
+// for setting exposure
 char        	key       = 0;
-e_vbus_index	CAMERA_ID = e_vbus1;
+e_vbus_index	CAMERA_ID = get_default_camera_id();
+exposure_param 	exposure_para = get_default_exposure_param(CAMERA_ID);
 DJI_lock        g_lock;
 DJI_event       g_event;
 Mat             g_greyscale_image_left(HEIGHT, WIDTH, CV_8UC1);
@@ -222,26 +226,31 @@ int my_callback(int data_type, int data_len, char *content)
     return 0;
 }
 
-#define RETURN_IF_ERR(err_code) { if( err_code ){ release_transfer(); \
-std::cout<<"Error: "<<(e_sdk_err_code)err_code<<" at "<<__LINE__<<","<<__FILE__<<std::endl; return -1;}}
-
-void set_camera_id(uint32 cameraID) {
+void set_camera_id_callback(int cameraID) {
 	e_vbus_index idx = static_cast<e_vbus_index>(cameraID);
 	if(idx >= e_vbus5 && idx <= e_vbus1) {
 		int err_code = stop_transfer();
-		RETURN_IF_ERR(err_code);
+		//RETURN_IF_ERR(err_code);
 		reset_config();
 		
 		CAMERA_ID = idx;
-
 		select_greyscale_image(CAMERA_ID, true);
 		select_greyscale_image(CAMERA_ID, false);
 		select_depth_image(CAMERA_ID);
 		select_disparity_image(CAMERA_ID);
 
 		err_code = start_transfer();
-		RETURN_IF_ERR(err_code);
+		//RETURN_IF_ERR(err_code);
 	}
+}
+
+void set_exposure_param_callback(float step, float exposure_time, uint32_t expected_brightness, uint32_t is_auto_exposure, int camera_pair_index) {
+	if(camera_pair_index != CAMERA_ID) {
+		std::cout << "Setting camera exposure parameters for an unselected camera! Setting: " << camera_pair_index << ", Selected: " << CAMERA_ID << std::endl;
+	}
+	exposure_para = get_exposure_param(step, exposure_time, expected_brightness, is_auto_exposure, camera_pair_index);
+	std::cout << "Setting exposure parameters....SensorId=" << CAMERA_ID << std::endl;
+    set_exposure_param(&exposure_para);
 }
 
 int main(int argc, char** argv)
@@ -259,7 +268,8 @@ int main(int argc, char** argv)
     obstacle_distance_pub	= my_node.advertise<sensor_msgs::LaserScan>("/guidance/obstacle_distance",1);
     ultrasonic_pub			= my_node.advertise<sensor_msgs::LaserScan>("/guidance/ultrasonic",1);
 
-    set_camera_id_sub		= my_node.subscribe("/guidance/set_camera_id", 10, )
+    //set_camera_id_sub		= my_node.subscribe("/guidance/set_camera_id", 10, set_camera_id_callback);
+    //set_exposure_param_sub	= my_node.subscribe("/guidance/set_expsoure_param", 10, set_exposure_param_callback);
 
     /* initialize guidance */
     reset_config();
@@ -269,19 +279,20 @@ int main(int argc, char** argv)
 	int online_status[CAMERA_PAIR_NUM];
 	err_code = get_online_status(online_status);
 	RETURN_IF_ERR(err_code);
-    std::cout<<"Sensor online status: ";
-	for (int i=0; i<CAMERA_PAIR_NUM; i++)
-        std::cout<<online_status[i]<<" ";
-    std::cout<<std::endl;
+    std::cout << "Sensor online status: ";
+	for (int i = 0; i < CAMERA_PAIR_NUM; i++) {
+        std::cout << online_status[i] << " ";
+	}
+    std::cout << std::endl;
 
 	// get cali param
 	stereo_cali cali[CAMERA_PAIR_NUM];
 	err_code = get_stereo_cali(cali);
 	RETURN_IF_ERR(err_code);
     std::cout << "cu\tcv\tfocal\tbaseline\n";
-	for (int i=0; i<CAMERA_PAIR_NUM; i++)
+	for (int i=0; i < CAMERA_PAIR_NUM; i++)
 	{
-        std::cout<<cali[i].cu<<"\t"<<cali[i].cv<<"\t"<<cali[i].focal<<"\t"<<cali[i].baseline<<std::endl;
+        std::cout << cali[i].cu << "\t" << cali[i].cv << "\t" << cali[i].focal << "\t" << cali[i].baseline << std::endl;
 	}
 	
     /* select data */
@@ -293,6 +304,7 @@ int main(int argc, char** argv)
 	RETURN_IF_ERR(err_code);
 	err_code = select_disparity_image(CAMERA_ID);
 	RETURN_IF_ERR(err_code);
+
     select_imu();
     select_ultrasonic();
     select_obstacle_distance();
@@ -303,41 +315,10 @@ int main(int argc, char** argv)
     err_code = start_transfer();
     RETURN_IF_ERR(err_code);
 	
-	// for setting exposure
-	exposure_param para;
-	para.m_is_auto_exposure = 1;
-	para.m_step = 10;
-	para.m_expected_brightness = 120;
-    para.m_camera_pair_index = CAMERA_ID;
-	
 	std::cout << "start_transfer" << std::endl;
 
-	while (ros::ok())
-	{
-		g_event.wait_event();
-		if (key > 0)
-			// set exposure parameters
-			if(key=='j' || key=='k' || key=='m' || key=='n'){
-				if(key=='j')
-					if(para.m_is_auto_exposure) para.m_expected_brightness += 20;
-					else para.m_exposure_time += 3;
-				else if(key=='k')
-					if(para.m_is_auto_exposure) para.m_expected_brightness -= 20;
-					else para.m_exposure_time -= 3;
-				else if(key=='m'){
-					para.m_is_auto_exposure = !para.m_is_auto_exposure;
-                    std::cout<<"exposure is "<<para.m_is_auto_exposure<<std::endl;
-				}
-				else if(key=='n'){//return to default
-					para.m_expected_brightness = para.m_exposure_time = 0;
-				}
-
-                std::cout<<"Setting exposure parameters....SensorId="<<CAMERA_ID<<std::endl;
-                para.m_camera_pair_index = CAMERA_ID;
-				set_exposure_param(&para);
-				key = 0;
-			}
-			ros::spinOnce();
+	while (ros::ok()) {
+		ros::spinOnce();
 	}
 
 	/* release data transfer */

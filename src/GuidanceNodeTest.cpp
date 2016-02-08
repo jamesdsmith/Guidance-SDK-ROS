@@ -7,6 +7,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <iostream>
 #include <ros/ros.h>
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/Image.h>
@@ -15,11 +16,21 @@
 #include <opencv/cv.h>
 #include <opencv/highgui.h>
 
+#include "DJI_guidance.h"
+#include "DJI_utility.h"
+#include "guidance_helpers.h"
+
 #include <geometry_msgs/TransformStamped.h> //IMU
 #include <geometry_msgs/Vector3Stamped.h> //velocity
 #include <sensor_msgs/LaserScan.h> //obstacle distance && ultrasonic
 
+using namespace cv;
+
 char            key       = 0;
+e_vbus_index    CAMERA_ID = get_default_camera_id();
+exposure_param  exposure_para = get_default_exposure_param(CAMERA_ID);
+DJI_lock        g_lock;
+DJI_event       g_event;
 
 ros::Subscriber left_image_sub;
 ros::Subscriber right_image_sub;
@@ -136,28 +147,30 @@ int main(int argc, char** argv)
     obstacle_distance_sub = my_node.subscribe("/guidance/obstacle_distance", 1, obstacle_distance_callback);
     ultrasonic_sub        = my_node.subscribe("/guidance/ultrasonic", 1, ultrasonic_callback);
 
+    int err_code = 0;
+
     while (ros::ok()) {
         g_event.wait_event();
         if (key > 0) {
             if(key == 'j' || key == 'k' || key == 'm' || key == 'n') {
                 // set exposure parameters
                 if(key=='j')
-                    if(para.m_is_auto_exposure) para.m_expected_brightness += 20;
-                    else para.m_exposure_time += 3;
+                    if(exposure_para.m_is_auto_exposure) exposure_para.m_expected_brightness += 20;
+                    else exposure_para.m_exposure_time += 3;
                 else if(key=='k')
-                    if(para.m_is_auto_exposure) para.m_expected_brightness -= 20;
-                    else para.m_exposure_time -= 3;
+                    if(exposure_para.m_is_auto_exposure) exposure_para.m_expected_brightness -= 20;
+                    else exposure_para.m_exposure_time -= 3;
                 else if(key=='m'){
-                    para.m_is_auto_exposure = !para.m_is_auto_exposure;
-                    std::cout<<"exposure is "<<para.m_is_auto_exposure<<std::endl;
+                    exposure_para.m_is_auto_exposure = !exposure_para.m_is_auto_exposure;
+                    std::cout<<"exposure is "<<exposure_para.m_is_auto_exposure<<std::endl;
                 }
                 else if(key=='n'){//return to default
-                    para.m_expected_brightness = para.m_exposure_time = 0;
+                    exposure_para.m_expected_brightness = exposure_para.m_exposure_time = 0;
                 }
 
                 std::cout<<"Setting exposure parameters....SensorId="<<CAMERA_ID<<std::endl;
-                para.m_camera_pair_index = CAMERA_ID;
-                set_exposure_param(&para);
+                exposure_para.m_camera_pair_index = CAMERA_ID;
+                set_exposure_param(&exposure_para);
                 key = 0;
             } else {
                 // switch image direction
@@ -172,12 +185,7 @@ int main(int argc, char** argv)
                 if (key == 'a') CAMERA_ID = e_vbus4;       
                 if (key == 's') CAMERA_ID = e_vbus5;
 
-                select_greyscale_image(CAMERA_ID, true);
-                select_greyscale_image(CAMERA_ID, false);
-                select_depth_image(CAMERA_ID);
-
-                err_code = start_transfer();
-                RETURN_IF_ERR(err_code);
+                // TODO: SEND MESSAGE
                 key = 0;
             }
         }

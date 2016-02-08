@@ -1,1 +1,1 @@
-uint32 cameraID
+int32 cameraID

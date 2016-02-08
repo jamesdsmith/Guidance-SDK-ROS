@@ -41,14 +41,15 @@ endif ()
 add_message_files(
   FILES
   set_camera_id.msg
+  set_exposure_param.msg
 )
 
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
 add_executable(guidanceNode ${PROJECT_SOURCE_DIR}/src/GuidanceNode.cpp ${PROJECT_SOURCE_DIR}/src/DJI_utility.cpp)
-add_executable(guidanceNodeTest ${PROJECT_SOURCE_DIR}/src/GuidanceNodeTest.cpp)
+add_executable(guidanceNodeTest ${PROJECT_SOURCE_DIR}/src/GuidanceNodeTest.cpp ${PROJECT_SOURCE_DIR}/src/DJI_utility.cpp)
 add_executable(guidanceNodeCalibration ${PROJECT_SOURCE_DIR}/src/GuidanceNodeCalibration.cpp ${PROJECT_SOURCE_DIR}/src/DJI_utility.cpp)
 
 target_link_libraries(guidanceNode DJI_guidance usb-1.0 ${catkin_LIBRARIES} ${OpenCV_LIBS})
-target_link_libraries(guidanceNodeTest ${catkin_LIBRARIES} ${OpenCV_LIBS})
+target_link_libraries(guidanceNodeTest DJI_guidance ${catkin_LIBRARIES} ${OpenCV_LIBS})
 target_link_libraries(guidanceNodeCalibration DJI_guidance usb-1.0 yaml-cpp ${catkin_LIBRARIES} ${OpenCV_LIBS})
