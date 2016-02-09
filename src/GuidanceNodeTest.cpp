@@ -43,6 +43,9 @@ ros::Subscriber velocity_sub;
 ros::Subscriber obstacle_distance_sub;
 ros::Subscriber ultrasonic_sub;
 
+ros::Publisher set_camera_id_pub;
+ros::Publisher set_exposure_param_pub;
+
 using namespace cv;
 #define WIDTH 320
 #define HEIGHT 240
@@ -160,22 +163,24 @@ int main(int argc, char** argv)
     ros::init(argc, argv, "GuidanceNodeTest");
     ros::NodeHandle my_node;
 
-    left_image_sub        = my_node.subscribe("/guidance/left_image",  10, left_image_callback);
-    right_image_sub       = my_node.subscribe("/guidance/right_image", 10, right_image_callback);
-    depth_image_sub       = my_node.subscribe("/guidance/depth_image", 10, depth_image_callback);
-    disparity_image_sub   = my_node.subscribe("/guidance/depth_image", 10, disparity_image_callback);
-    imu_sub               = my_node.subscribe("/guidance/imu", 1, imu_callback);
-    velocity_sub          = my_node.subscribe("/guidance/velocity", 1, velocity_callback);
-    obstacle_distance_sub = my_node.subscribe("/guidance/obstacle_distance", 1, obstacle_distance_callback);
-    ultrasonic_sub        = my_node.subscribe("/guidance/ultrasonic", 1, ultrasonic_callback);
+    left_image_sub         = my_node.subscribe("/guidance/left_image",  10, left_image_callback);
+    right_image_sub        = my_node.subscribe("/guidance/right_image", 10, right_image_callback);
+    depth_image_sub        = my_node.subscribe("/guidance/depth_image", 10, depth_image_callback);
+    disparity_image_sub    = my_node.subscribe("/guidance/depth_image", 10, disparity_image_callback);
+    imu_sub                = my_node.subscribe("/guidance/imu", 1, imu_callback);
+    velocity_sub           = my_node.subscribe("/guidance/velocity", 1, velocity_callback);
+    obstacle_distance_sub  = my_node.subscribe("/guidance/obstacle_distance", 1, obstacle_distance_callback);
+    ultrasonic_sub         = my_node.subscribe("/guidance/ultrasonic", 1, ultrasonic_callback);
 
+    set_camera_id_pub      = my_node.advertise<guidance::set_camera_id>(guidance::SET_CAMERA_ID, 10);
+    set_exposure_param_pub = my_node.advertise<guidance::set_exposure_param>(guidance::SET_EXPOSURE_PARAM, 10);
+    
     int err_code = 0;
 
     std::cout << "Starting GuidanceNodeTest..." << std::endl;
     // Open windows at startup so we can process wait_event
     cv::Mat disparity8(HEIGHT, WIDTH, CV_8UC1);
     cv::imshow("disparity_image", disparity8);
-    cv::namedWindow("depth");
 
     while (ros::ok()) {
         //g_event.wait_event();
@@ -183,36 +188,56 @@ int main(int argc, char** argv)
         if (key > 0) {
             if(key == 'q') {
                 // quit the loop
+                std::cout << "Quitting..." << std::endl;
                 break;
             } else if(key == 'j' || key == 'k' || key == 'm' || key == 'n') {
                 // set exposure parameters
-                if(key=='j')
-                    if(exposure_para.m_is_auto_exposure) exposure_para.m_expected_brightness += 20;
-                    else exposure_para.m_exposure_time += 3;
-                else if(key=='k')
-                    if(exposure_para.m_is_auto_exposure) exposure_para.m_expected_brightness -= 20;
-                    else exposure_para.m_exposure_time -= 3;
-                else if(key=='m'){
+                if(key == 'j') {
+                    if(exposure_para.m_is_auto_exposure) {
+                        exposure_para.m_expected_brightness += 20;
+                    } else {
+                        exposure_para.m_exposure_time += 3;
+                    }
+                } else if(key == 'k') {
+                    if(exposure_para.m_is_auto_exposure) {
+                        exposure_para.m_expected_brightness -= 20;
+                    } else {
+                        exposure_para.m_exposure_time -= 3;
+                    }
+                } else if(key == 'm') {
                     exposure_para.m_is_auto_exposure = !exposure_para.m_is_auto_exposure;
-                    std::cout<<"exposure is "<<exposure_para.m_is_auto_exposure<<std::endl;
-                }
-                else if(key=='n'){//return to default
+                    std::cout << "exposure is " << exposure_para.m_is_auto_exposure << std::endl;
+                } else if(key == 'n') {
+                    //return to default
                     exposure_para.m_expected_brightness = exposure_para.m_exposure_time = 0;
                 }
 
                 std::cout << "Setting exposure parameters....SensorId=" << CAMERA_ID << std::endl;
                 exposure_para.m_camera_pair_index = CAMERA_ID;
-                //set_exposure_param(&exposure_para);
+
+                // Send change exposure message over to GuidanceNode
+                set_exposure_param_pub.publish(get_exposure_msg(exposure_para));
                 key = 0;
             } else if(key == 'w' || key == 'd' || key == 'x' || key == 'a' || key == 's') {
                 // switch image direction
-                if (key == 'w') CAMERA_ID = e_vbus1;
-                if (key == 'd') CAMERA_ID = e_vbus2;
-                if (key == 'x') CAMERA_ID = e_vbus3;
-                if (key == 'a') CAMERA_ID = e_vbus4;       
-                if (key == 's') CAMERA_ID = e_vbus5;
+                if (key == 'w') {
+                    CAMERA_ID = e_vbus1;
+                } else if (key == 'd') {
+                    CAMERA_ID = e_vbus2;
+                } else if (key == 'x') {
+                    CAMERA_ID = e_vbus3;
+                } else if (key == 'a') {
+                    CAMERA_ID = e_vbus4;
+                } else if (key == 's') {
+                    CAMERA_ID = e_vbus5;
+                }
 
-                // TODO: SEND MESSAGE
+                std::cout << "Change camera: " << CAMERA_ID << std::endl;
+
+                // Send change camera id message over to GuidanceNode
+                guidance::set_camera_id msg;
+                msg.cameraID = CAMERA_ID;
+                set_camera_id_pub.publish(msg);
                 key = 0;
             }
         }
